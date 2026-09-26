@@ -95,6 +95,14 @@ cc_defaults {
 
 cc_library {
     name: "libpng",
+    arch: {
+        loongarch64: {
+            srcs: ["loongarch/loongarch_lsx_init.c"],
+            cflags: ["-DPNG_LOONGARCH_LSX_OPT=1", "-mno-lsx", "-mno-lasx"],
+            lto: { never: true },
+            whole_static_libs: ["libpng_lsx"],
+        },
+    },
     vendor_available: true,
     product_available: true,
     // TODO(b/153609531): remove when no longer needed.
@@ -122,6 +130,14 @@ cc_library {
 
 cc_library_static {
     name: "libpng_ndk",
+    arch: {
+        loongarch64: {
+            srcs: ["loongarch/loongarch_lsx_init.c"],
+            cflags: ["-DPNG_LOONGARCH_LSX_OPT=1", "-mno-lsx", "-mno-lasx"],
+            lto: { never: true },
+            whole_static_libs: ["libpng_ndk_lsx"],
+        },
+    },
     defaults: ["libpng-defaults"],
     cflags: ["-ftrapv"],
 
@@ -167,4 +183,390 @@ cc_fuzz {
         ],
         componentid: 87896,
     },
+}
+
+// LSX filter kernels are selected at runtime through AT_HWCAP.
+cc_defaults {
+    name: "libpng-lsx-defaults",
+    enabled: false,
+    arch: { loongarch64: { enabled: true } },
+    srcs: ["loongarch/filter_lsx_intrinsics.c"],
+    cflags: [
+        "-std=gnu89", "-Wall", "-Werror", "-Wno-unused-parameter",
+        "-DPNG_LOONGARCH_LSX_OPT=1", "-mlsx", "-mno-lasx", "-fvisibility=hidden",
+    ],
+    shared_libs: ["libz"],
+    lto: { never: true },
+    visibility: ["//visibility:private"],
+}
+
+cc_library_static {
+    name: "libpng_lsx",
+    defaults: ["libpng-lsx-defaults"],
+    vendor_available: true,
+    product_available: true,
+    native_bridge_supported: true,
+    recovery_available: true,
+    host_supported: true,
+    sdk_version: "current",
+    min_sdk_version: "apex_inherit",
+    apex_available: ["com.android.mediaprovider", "//apex_available:platform"],
+}
+
+cc_library_static {
+    name: "libpng_ndk_lsx",
+    defaults: ["libpng-lsx-defaults"],
+    cflags: ["-ftrapv"],
+    sdk_version: "minimum",
+}
+
+// LoongArch LSX integration tests (local addition)
+// =====================================================
+// Private, uninstallable, loongarch64-only test builds.  Profiles:
+//   pc: production configuration, PNG_LOONGARCH_LSX_OPT=0, no init/helper.
+//   pl: the production libpng itself (no separate test library).
+//   dc: pc plus PNG_WARNINGS_SUPPORTED=1 (diagnostic test build only).
+//   dl: pl plus PNG_WARNINGS_SUPPORTED=1, with its own LSX helper.
+// None of these replace libpng or libpng_ndk.
+
+cc_defaults {
+    name: "libpng-t061b-loongarch64-only",
+    enabled: false,
+    arch: { loongarch64: { enabled: true } },
+}
+
+cc_library_shared {
+    name: "libpng_t061b_pc",
+    defaults: ["libpng-defaults", "libpng-t061b-loongarch64-only"],
+    arch: {
+        loongarch64: {
+            cflags: ["-DPNG_LOONGARCH_LSX_OPT=0", "-mno-lsx", "-mno-lasx"],
+            lto: { never: true },
+        },
+    },
+    installable: false,
+    visibility: ["//visibility:private"],
+}
+
+cc_library_shared {
+    name: "libpng_t061b_dc",
+    defaults: ["libpng-defaults", "libpng-t061b-loongarch64-only"],
+    arch: {
+        loongarch64: {
+            cflags: [
+                "-DPNG_LOONGARCH_LSX_OPT=0", "-mno-lsx", "-mno-lasx",
+                "-DPNG_WARNINGS_SUPPORTED=1",
+            ],
+            lto: { never: true },
+        },
+    },
+    installable: false,
+    visibility: ["//visibility:private"],
+}
+
+cc_library_static {
+    name: "libpng_t061b_dl_lsx",
+    defaults: ["libpng-lsx-defaults"],
+    cflags: ["-DPNG_WARNINGS_SUPPORTED=1"],
+}
+
+cc_library_shared {
+    name: "libpng_t061b_dl",
+    defaults: ["libpng-defaults", "libpng-t061b-loongarch64-only"],
+    arch: {
+        loongarch64: {
+            srcs: ["loongarch/loongarch_lsx_init.c"],
+            cflags: [
+                "-DPNG_LOONGARCH_LSX_OPT=1", "-mno-lsx", "-mno-lasx",
+                "-DPNG_WARNINGS_SUPPORTED=1",
+            ],
+            lto: { never: true },
+            whole_static_libs: ["libpng_t061b_dl_lsx"],
+        },
+    },
+    installable: false,
+    visibility: ["//visibility:private"],
+}
+
+// Per-profile test program settings: each profile's programs use the same
+// feature macros and baseline ISA as the library they link against.
+
+cc_defaults {
+    name: "libpng-t061b-pc-test-defaults",
+    defaults: ["libpng-t061b-loongarch64-only"],
+    cflags: ["-Wall", "-Werror", "-fno-inline", "-g"],
+    arch: {
+        loongarch64: {
+            cflags: ["-DPNG_LOONGARCH_LSX_OPT=0", "-mno-lsx", "-mno-lasx"],
+            lto: { never: true },
+        },
+    },
+    shared_libs: ["libpng_t061b_pc", "libz", "libm"],
+}
+
+cc_defaults {
+    name: "libpng-t061b-pl-test-defaults",
+    defaults: ["libpng-t061b-loongarch64-only"],
+    cflags: ["-Wall", "-Werror", "-fno-inline", "-g"],
+    arch: {
+        loongarch64: {
+            cflags: ["-DPNG_LOONGARCH_LSX_OPT=1", "-mno-lsx", "-mno-lasx"],
+            lto: { never: true },
+        },
+    },
+    shared_libs: ["libpng", "libz", "libm"],
+}
+
+cc_defaults {
+    name: "libpng-t061b-dc-test-defaults",
+    defaults: ["libpng-t061b-loongarch64-only"],
+    cflags: ["-Wall", "-Werror", "-fno-inline", "-g"],
+    arch: {
+        loongarch64: {
+            cflags: [
+                "-DPNG_LOONGARCH_LSX_OPT=0", "-mno-lsx", "-mno-lasx",
+                "-DPNG_WARNINGS_SUPPORTED=1",
+            ],
+            lto: { never: true },
+        },
+    },
+    shared_libs: ["libpng_t061b_dc", "libz", "libm"],
+}
+
+cc_defaults {
+    name: "libpng-t061b-dl-test-defaults",
+    defaults: ["libpng-t061b-loongarch64-only"],
+    cflags: ["-Wall", "-Werror", "-fno-inline", "-g"],
+    arch: {
+        loongarch64: {
+            cflags: [
+                "-DPNG_LOONGARCH_LSX_OPT=1", "-mno-lsx", "-mno-lasx",
+                "-DPNG_WARNINGS_SUPPORTED=1",
+            ],
+            lto: { never: true },
+        },
+    },
+    shared_libs: ["libpng_t061b_dl", "libz", "libm"],
+}
+
+// pc profile programs
+
+cc_test {
+    name: "t061b_pc_pngtest",
+    defaults: ["libpng-t061b-pc-test-defaults"],
+    gtest: false,
+    srcs: ["pngtest.c"],
+}
+
+cc_test {
+    name: "t061b_pc_pngvalid",
+    defaults: ["libpng-t061b-pc-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/libtests/pngvalid.c"],
+}
+
+cc_test {
+    name: "t061b_pc_pngstest",
+    defaults: ["libpng-t061b-pc-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/libtests/pngstest.c"],
+}
+
+cc_test {
+    name: "t061b_pc_pngunknown",
+    defaults: ["libpng-t061b-pc-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/libtests/pngunknown.c"],
+}
+
+cc_test {
+    name: "t061b_pc_pngimage",
+    defaults: ["libpng-t061b-pc-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/libtests/pngimage.c"],
+}
+
+cc_test {
+    name: "t061b_pc_filter_test",
+    defaults: ["libpng-t061b-pc-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/loongarch-tests/filter_test.c"],
+}
+
+cc_test {
+    name: "t061b_pc_decode_compare",
+    defaults: ["libpng-t061b-pc-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/loongarch-tests/decode_compare.c"],
+}
+
+// pl profile programs
+
+cc_test {
+    name: "t061b_pl_pngtest",
+    defaults: ["libpng-t061b-pl-test-defaults"],
+    gtest: false,
+    srcs: ["pngtest.c"],
+}
+
+cc_test {
+    name: "t061b_pl_pngvalid",
+    defaults: ["libpng-t061b-pl-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/libtests/pngvalid.c"],
+}
+
+cc_test {
+    name: "t061b_pl_pngstest",
+    defaults: ["libpng-t061b-pl-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/libtests/pngstest.c"],
+}
+
+cc_test {
+    name: "t061b_pl_pngunknown",
+    defaults: ["libpng-t061b-pl-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/libtests/pngunknown.c"],
+}
+
+cc_test {
+    name: "t061b_pl_pngimage",
+    defaults: ["libpng-t061b-pl-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/libtests/pngimage.c"],
+}
+
+cc_test {
+    name: "t061b_pl_filter_test",
+    defaults: ["libpng-t061b-pl-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/loongarch-tests/filter_test.c"],
+}
+
+cc_test {
+    name: "t061b_pl_decode_compare",
+    defaults: ["libpng-t061b-pl-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/loongarch-tests/decode_compare.c"],
+}
+
+// dc profile programs
+
+cc_test {
+    name: "t061b_dc_pngtest",
+    defaults: ["libpng-t061b-dc-test-defaults"],
+    gtest: false,
+    srcs: ["pngtest.c"],
+}
+
+cc_test {
+    name: "t061b_dc_pngvalid",
+    defaults: ["libpng-t061b-dc-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/libtests/pngvalid.c"],
+}
+
+cc_test {
+    name: "t061b_dc_pngstest",
+    defaults: ["libpng-t061b-dc-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/libtests/pngstest.c"],
+}
+
+cc_test {
+    name: "t061b_dc_pngunknown",
+    defaults: ["libpng-t061b-dc-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/libtests/pngunknown.c"],
+}
+
+cc_test {
+    name: "t061b_dc_pngimage",
+    defaults: ["libpng-t061b-dc-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/libtests/pngimage.c"],
+}
+
+cc_test {
+    name: "t061b_dc_filter_test",
+    defaults: ["libpng-t061b-dc-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/loongarch-tests/filter_test.c"],
+}
+
+cc_test {
+    name: "t061b_dc_decode_compare",
+    defaults: ["libpng-t061b-dc-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/loongarch-tests/decode_compare.c"],
+}
+
+// dl profile programs
+
+cc_test {
+    name: "t061b_dl_pngtest",
+    defaults: ["libpng-t061b-dl-test-defaults"],
+    gtest: false,
+    srcs: ["pngtest.c"],
+}
+
+cc_test {
+    name: "t061b_dl_pngvalid",
+    defaults: ["libpng-t061b-dl-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/libtests/pngvalid.c"],
+}
+
+cc_test {
+    name: "t061b_dl_pngstest",
+    defaults: ["libpng-t061b-dl-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/libtests/pngstest.c"],
+}
+
+cc_test {
+    name: "t061b_dl_pngunknown",
+    defaults: ["libpng-t061b-dl-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/libtests/pngunknown.c"],
+}
+
+cc_test {
+    name: "t061b_dl_pngimage",
+    defaults: ["libpng-t061b-dl-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/libtests/pngimage.c"],
+}
+
+cc_test {
+    name: "t061b_dl_filter_test",
+    defaults: ["libpng-t061b-dl-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/loongarch-tests/filter_test.c"],
+}
+
+cc_test {
+    name: "t061b_dl_decode_compare",
+    defaults: ["libpng-t061b-dl-test-defaults"],
+    gtest: false,
+    srcs: ["contrib/loongarch-tests/decode_compare.c"],
+}
+
+// Static consumer of the production libpng, for ISA isolation checks of a
+// statically linked image.  Other system libraries stay dynamic.
+cc_test {
+    name: "t061b_static_pngtest",
+    defaults: ["libpng-t061b-loongarch64-only"],
+    gtest: false,
+    srcs: ["pngtest.c"],
+    cflags: ["-Wall", "-Werror", "-fno-inline", "-g"],
+    arch: {
+        loongarch64: {
+            cflags: ["-DPNG_LOONGARCH_LSX_OPT=1", "-mno-lsx", "-mno-lasx"],
+            lto: { never: true },
+        },
+    },
+    static_libs: ["libpng"],
+    shared_libs: ["libz", "libm"],
 }

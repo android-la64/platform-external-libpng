@@ -1110,16 +1110,22 @@ store_error(png_structp ppIn, png_const_charp message) /* PNG_NORETURN */
    }
 }
 
-static void PNGCBAPI
-store_warning(png_structp ppIn, png_const_charp message)
+/* Local const-correct helper; callback below retains the libpng ABI. */
+static void
+store_warning_impl(png_const_structp pp, png_const_charp message)
 {
-   png_const_structp pp = ppIn;
    png_store *ps = voidcast(png_store*, png_get_error_ptr(pp));
 
    if (!ps->expect_warning)
       store_log(ps, pp, message, 0 /* warning */);
    else
       ps->saw_warning = 1;
+}
+
+static void PNGCBAPI
+store_warning(png_structp pp, png_const_charp message)
+{
+   store_warning_impl(pp, message);
 }
 
 /* These somewhat odd functions are used when reading an image to ensure that
@@ -10156,7 +10162,7 @@ gamma_component_validate(const char *name, const validate_info *vi,
 #              ifdef PNG_WARNINGS_SUPPORTED
                   png_warning(vi->pp, msg);
 #              else
-                  store_warning(vi->pp, msg);
+                  store_warning_impl(vi->pp, msg);
 #              endif
             }
 

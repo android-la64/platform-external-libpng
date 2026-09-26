@@ -19,8 +19,8 @@
 #define LA_HWCAP_LSX    (1<<4)
 static int png_has_lsx(void)
 {
-    int flags = 0;
-    int flag  = (int)getauxval(AT_HWCAP);
+    /* Android integration: remove unused local; retain the full auxv type. */
+    unsigned long flag = getauxval(AT_HWCAP);
 
     if (flag & LA_HWCAP_LSX)
         return 1;

@@ -169,7 +169,7 @@ void png_read_filter_row_sub3_lsx(png_row_infop row_info, png_bytep row,
                                   png_const_bytep prev_row)
 {
    size_t n = row_info->rowbytes;
-   png_uint_32 tmp;
+   /* Android integration: unused temporary removed for warning-clean builds. */
    png_bytep nxt = row;
    __m128i vec_0, vec_1;
 
